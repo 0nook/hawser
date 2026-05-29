@@ -416,8 +416,15 @@ func (c *ComposeClient) Execute(ctx context.Context, op *ComposeOperation) (*Com
 		cmd.Dir = op.WorkDir
 	}
 
-	// Set Docker socket environment
-	cmd.Env = append(os.Environ(), fmt.Sprintf("DOCKER_HOST=unix://%s", c.dockerSocket))
+	// Set clean environment to prevent host env vars from overriding compose stack variables
+	cmd.Env = []string{
+		fmt.Sprintf("DOCKER_HOST=unix://%s", c.dockerSocket),
+	}
+	for _, key := range []string{"PATH", "HOME", "USER"} {
+		if val, ok := os.LookupEnv(key); ok {
+			cmd.Env = append(cmd.Env, key+"="+val)
+		}
+	}
 
 	// Set API version for compatibility with newer Docker daemons
 	// This allows older docker CLI to work with newer daemons
