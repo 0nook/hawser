@@ -57,7 +57,11 @@ func isSafeRelPath(p string) bool {
 //
 // Every requested file produces exactly one entry in either deleted or
 // skipped — Dockhand relies on this to detect feature support.
-func applyFileDeletions(stackDir string, files []FileToDelete) (deleted []string, skipped []SkippedFile) {
+//
+// allowLoadBearing is true only on full stack removal (down + removeFiles),
+// where deleting the stack's compose/.env is the whole point. During normal
+// sync it stays false so those files can never be auto-deleted.
+func applyFileDeletions(stackDir string, files []FileToDelete, allowLoadBearing bool) (deleted []string, skipped []SkippedFile) {
 	root, err := filepath.Abs(stackDir)
 	if err != nil {
 		for _, f := range files {
@@ -74,7 +78,7 @@ func applyFileDeletions(stackDir string, files []FileToDelete) (deleted []string
 			skipped = append(skipped, SkippedFile{Path: f.Path, Reason: "invalid-path"})
 			continue
 		}
-		if loadBearingFiles[filepath.Base(f.Path)] {
+		if !allowLoadBearing && loadBearingFiles[filepath.Base(f.Path)] {
 			skipped = append(skipped, SkippedFile{Path: f.Path, Reason: "load-bearing"})
 			continue
 		}

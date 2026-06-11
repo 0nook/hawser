@@ -343,7 +343,7 @@ func (c *ComposeClient) Execute(ctx context.Context, op *ComposeOperation) (*Com
 			}
 		}
 		if delDir != "" {
-			deletedFiles, skippedFiles = applyFileDeletions(delDir, op.FilesToDelete)
+			deletedFiles, skippedFiles = applyFileDeletions(delDir, op.FilesToDelete, false)
 		} else {
 			for _, f := range op.FilesToDelete {
 				skippedFiles = append(skippedFiles, SkippedFile{Path: f.Path, Reason: "apply-failed"})
@@ -516,17 +516,26 @@ func (c *ComposeClient) Execute(ctx context.Context, op *ComposeOperation) (*Com
 		log.Debugf("Compose completed: %s (project=%s)", op.Operation, op.ProjectName)
 	}
 
-	// Stack deletion (#1162): remove the agent-side stack directory after a
-	// successful down, ONLY when Dockhand explicitly requested it (full stack
-	// removal). A plain "down" keeps files — including relative volume mounts.
+	// Stack deletion (#1162): after a successful down with removeFiles, delete
+	// EXACTLY the files Dockhand listed — hash-verified, containment-checked —
+	// then remove emptied directories (non-recursive). The agent never decides
+	// what to delete on its own: an empty list deletes nothing, files modified
+	// on this host are kept, and the stack directory itself disappears only
+	// when nothing else (e.g. volume data) lives in it.
+	// A plain "down" (removeFiles=false) never touches files.
 	if op.Operation == "down" && result.Success && op.RemoveFiles && c.stacksDir != "" && op.ProjectName != "" {
 		base, baseErr := filepath.Abs(c.stacksDir)
 		dir, dirErr := filepath.Abs(filepath.Join(c.stacksDir, op.ProjectName))
 		if baseErr == nil && dirErr == nil && dir != base && strings.HasPrefix(dir, base+string(os.PathSeparator)) {
-			if rmErr := os.RemoveAll(dir); rmErr != nil {
-				log.Warnf("Failed to remove stack directory %s: %v", dir, rmErr)
-			} else {
+			if len(op.FilesToDelete) > 0 {
+				removed, kept := applyFileDeletions(dir, op.FilesToDelete, true)
+				result.DeletedFiles = removed
+				result.SkippedFiles = kept
+			}
+			if rmErr := os.Remove(dir); rmErr == nil {
 				log.Infof("Removed stack directory %s (stack deleted)", dir)
+			} else if _, statErr := os.Stat(dir); statErr == nil {
+				log.Infof("Stack directory kept (contains files not written by Dockhand): %s", dir)
 			}
 		}
 	}
