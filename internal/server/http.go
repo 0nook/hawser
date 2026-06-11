@@ -434,7 +434,14 @@ func (s *Server) handleEventsStream(w http.ResponseWriter, r *http.Request) {
 		}
 		if err != nil {
 			if err != io.EOF {
-				log.Errorf("Events stream error: %v", err)
+				// Client disconnect closes dockerConn (goroutine above), which
+				// surfaces here as "use of closed network connection" — a
+				// normal disconnect, not a Docker failure.
+				if r.Context().Err() != nil {
+					log.Debugf("Events stream closed by client: %v", err)
+				} else {
+					log.Errorf("Events stream error: %v", err)
+				}
 			}
 			return
 		}
