@@ -237,7 +237,7 @@ func (c *Client) sendHello() error {
 
 	hostname, _ := os.Hostname()
 
-	capabilities := []string{protocol.CapabilityExec, protocol.CapabilityMetrics, protocol.CapabilityEvents}
+	capabilities := []string{protocol.CapabilityExec, protocol.CapabilityMetrics, protocol.CapabilityEvents, protocol.CapabilityGitSyncDelete}
 	if c.compose.IsAvailable() {
 		capabilities = append(capabilities, protocol.CapabilityCompose)
 	}

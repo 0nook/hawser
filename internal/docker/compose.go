@@ -117,6 +117,8 @@ type ComposeOperation struct {
 	Build           bool                  `json:"build,omitempty"`           // Build images before starting (--build)
 	NoBuildCache    bool                  `json:"noBuildCache,omitempty"`    // Build without cache (--no-cache)
 	PullPolicy      string                `json:"pullPolicy,omitempty"`      // Pull policy: 'always' | 'missing' | 'never'
+	FilesToDelete   []FileToDelete        `json:"filesToDelete,omitempty"`   // Git deletion sync (#966): hash-verified file removals
+	RemoveFiles     bool                  `json:"removeFiles,omitempty"`     // On down: remove the stack directory entirely (#1162, stack deletion only)
 }
 
 // ComposeResult is the result of a compose operation
@@ -125,6 +127,10 @@ type ComposeResult struct {
 	Output   string `json:"output"`
 	Error    string `json:"error,omitempty"`
 	ExitCode int    `json:"exitCode"`
+	// Git deletion sync report. Every requested FilesToDelete entry appears in
+	// exactly one of these — Dockhand uses their presence to detect support.
+	DeletedFiles []string      `json:"deletedFiles,omitempty"`
+	SkippedFiles []SkippedFile `json:"skippedFiles,omitempty"`
 }
 
 // loginToRegistries logs into all provided registries before compose operations
@@ -323,6 +329,29 @@ func (c *ComposeClient) Execute(ctx context.Context, op *ComposeOperation) (*Com
 		args = append(args, "-f", "-")
 	}
 
+	// Git deletion sync (#966): remove files that were deleted from the git
+	// repository. Runs before compose up so removed config files are not
+	// mounted. Every entry is hash-verified and containment-checked by the
+	// applier — user data and locally modified files are never touched.
+	var deletedFiles []string
+	var skippedFiles []SkippedFile
+	if op.Operation == "up" && len(op.FilesToDelete) > 0 {
+		delDir := stackDir
+		if delDir == "" && c.stacksDir != "" && op.ProjectName != "" {
+			if abs, err := filepath.Abs(filepath.Join(c.stacksDir, op.ProjectName)); err == nil {
+				delDir = abs
+			}
+		}
+		if delDir != "" {
+			deletedFiles, skippedFiles = applyFileDeletions(delDir, op.FilesToDelete)
+		} else {
+			for _, f := range op.FilesToDelete {
+				skippedFiles = append(skippedFiles, SkippedFile{Path: f.Path, Reason: "apply-failed"})
+			}
+			log.Warnf("Deletion sync: no stack directory available, %d deletion(s) deferred", len(op.FilesToDelete))
+		}
+	}
+
 	// Add env files from the stack directory.
 	// Order matters: .env first (base repo values), .env.dockhand second (user overrides).
 	// Later --env-file entries override earlier ones in Docker Compose.
@@ -467,9 +496,11 @@ func (c *ComposeClient) Execute(ctx context.Context, op *ComposeOperation) (*Com
 	err := cmd.Run()
 
 	result := &ComposeResult{
-		Success:  err == nil,
-		Output:   stdout.String(),
-		ExitCode: 0,
+		Success:      err == nil,
+		Output:       stdout.String(),
+		ExitCode:     0,
+		DeletedFiles: deletedFiles,
+		SkippedFiles: skippedFiles,
 	}
 
 	if err != nil {
@@ -483,6 +514,21 @@ func (c *ComposeClient) Execute(ctx context.Context, op *ComposeOperation) (*Com
 		log.Debugf("Compose failed: exit=%d error=%s", result.ExitCode, result.Error)
 	} else {
 		log.Debugf("Compose completed: %s (project=%s)", op.Operation, op.ProjectName)
+	}
+
+	// Stack deletion (#1162): remove the agent-side stack directory after a
+	// successful down, ONLY when Dockhand explicitly requested it (full stack
+	// removal). A plain "down" keeps files — including relative volume mounts.
+	if op.Operation == "down" && result.Success && op.RemoveFiles && c.stacksDir != "" && op.ProjectName != "" {
+		base, baseErr := filepath.Abs(c.stacksDir)
+		dir, dirErr := filepath.Abs(filepath.Join(c.stacksDir, op.ProjectName))
+		if baseErr == nil && dirErr == nil && dir != base && strings.HasPrefix(dir, base+string(os.PathSeparator)) {
+			if rmErr := os.RemoveAll(dir); rmErr != nil {
+				log.Warnf("Failed to remove stack directory %s: %v", dir, rmErr)
+			} else {
+				log.Infof("Removed stack directory %s (stack deleted)", dir)
+			}
+		}
 	}
 
 	// For ps command, include stderr in output if it contains JSON

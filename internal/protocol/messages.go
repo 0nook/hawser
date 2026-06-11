@@ -34,10 +34,11 @@ const (
 
 // Agent capabilities
 const (
-	CapabilityCompose = "compose" // Docker Compose support
-	CapabilityExec    = "exec"    // Interactive exec support
-	CapabilityMetrics = "metrics" // Host metrics collection
-	CapabilityEvents  = "events"  // Docker event streaming
+	CapabilityCompose       = "compose"         // Docker Compose support
+	CapabilityExec          = "exec"            // Interactive exec support
+	CapabilityMetrics       = "metrics"         // Host metrics collection
+	CapabilityEvents        = "events"          // Docker event streaming
+	CapabilityGitSyncDelete = "git-sync-delete" // Git deletion sync: hash-verified file removals (#966)
 )
 
 // BaseMessage is the common structure for all messages
