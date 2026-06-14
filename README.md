@@ -178,7 +178,7 @@ DOCKER_SOCKET=/var/run/docker.sock
 # AGENT_NAME=my-server
 
 # Edge mode only needs port 2376 open for Docker's HEALTHCHECK directive.
-# Restrict it to localhost so the host has no externally-reachable surface (#71):
+# Restrict it to localhost so the host has no externally-reachable surface:
 # BIND_ADDRESS=127.0.0.1
 
 # TLS configuration for self-signed Dockhand (optional)
