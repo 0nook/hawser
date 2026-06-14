@@ -80,9 +80,10 @@ ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     RECONNECT_DELAY=1 \
     MAX_RECONNECT_DELAY=60
 
-# Create docker compose plugin symlink and data directory
+# Create docker compose plugin symlink and data directory.
+# Use ln -sf because newer docker-compose packages already ship this symlink.
 RUN mkdir -p /usr/libexec/docker/cli-plugins \
-    && ln -s /usr/bin/docker-compose /usr/libexec/docker/cli-plugins/docker-compose \
+    && ln -sf /usr/bin/docker-compose /usr/libexec/docker/cli-plugins/docker-compose \
     && mkdir -p /data/stacks
 
 # Declare as volume to ensure writability even with --read-only
