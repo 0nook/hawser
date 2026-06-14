@@ -97,6 +97,10 @@ PORT=2376
 
 # Agent identification (optional)
 # AGENT_NAME=my-server
+
+# Edge mode only needs port 2376 open for Docker's HEALTHCHECK directive.
+# Restrict it to localhost so the host has no externally-reachable surface (#71):
+# BIND_ADDRESS=127.0.0.1
 EOF
 fi
 
