@@ -80,12 +80,15 @@ DOCKER_SOCKET=/var/run/docker.sock
 #################### Standard Mode (comment out for Edge mode) ####################
 PORT=2376
 
+# REQUIRED: Standard mode listens on all interfaces and proxies to the Docker
+# socket, so a token is required to start. Set the same token in Dockhand when
+# adding this environment. (For a local-only agent instead, leave TOKEN unset
+# and add BIND_ADDRESS=127.0.0.1.)
+TOKEN=change-me-before-starting
+
 # TLS configuration (optional, Standard mode only)
 # TLS_CERT=/etc/hawser/server.crt
 # TLS_KEY=/etc/hawser/server.key
-
-# Token authentication (optional)
-# TOKEN=your-secret-token
 
 ################# Edge Mode (uncomment and configure for Edge mode) ###############
 # DOCKHAND_SERVER_URL=wss://your-dockhand.example.com/api/hawser/connect
