@@ -28,20 +28,24 @@ Download the latest release from [GitHub Releases](https://github.com/Finsys/haw
 
 **Standard Mode:**
 
-```bash
-hawser --port 2376
-```
-
-**Standard Mode with Token Authentication** (optional):
+Standard mode exposes the Docker API. When binding a non-loopback address
+(the `0.0.0.0` default), a `TOKEN` is **required** — without one, Hawser refuses
+to start to avoid exposing an unauthenticated Docker API to the network:
 
 ```bash
 TOKEN=your-secret-token hawser --port 2376
 ```
 
-**Standard Mode with TLS** (optional):
+For a local-only agent you can bind loopback instead of setting a token:
 
 ```bash
-TLS_CERT=/path/to/server.crt TLS_KEY=/path/to/server.key hawser --port 2376
+BIND_ADDRESS=127.0.0.1 hawser --port 2376
+```
+
+**Standard Mode with TLS** (optional, token still required for non-loopback binds):
+
+```bash
+TLS_CERT=/path/to/server.crt TLS_KEY=/path/to/server.key TOKEN=your-secret-token hawser --port 2376
 ```
 
 **Standard Mode with TLS and Token** (recommended for production):
@@ -89,7 +93,7 @@ Example config for **Standard Mode**:
 ```bash
 # Standard mode - listen for connections
 PORT=2376
-# Optional: require token authentication
+# Required when binding a non-loopback address (the 0.0.0.0 default)
 TOKEN=your-secret-token
 ```
 
@@ -147,14 +151,16 @@ WantedBy=multi-user.target
 # Standard Mode
 PORT=2376
 
+# Required when binding a non-loopback address (the 0.0.0.0 default).
+# Hawser refuses to start on a non-loopback bind without a token.
+# Alternatively set BIND_ADDRESS=127.0.0.1 for a local-only agent.
+TOKEN=your-secret-token
+
 # Docker socket path
 DOCKER_SOCKET=/var/run/docker.sock
 
 # Agent identification (optional)
 # AGENT_NAME=my-server
-
-# Token authentication (optional)
-# TOKEN=your-secret-token
 
 # TLS configuration (optional)
 # TLS_CERT=/etc/hawser/server.crt
@@ -254,17 +260,22 @@ sudo journalctl -u hawser -f
 
 **Standard Mode** - Agent listens for connections:
 
+A `TOKEN` is required because the container publishes the port on a non-loopback
+address; without one the agent refuses to start (it would expose an
+unauthenticated Docker API to the network):
+
 ```bash
 docker run -d \
   --name hawser \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /opt/hawser-stacks:/opt/hawser-stacks \
   -e STACKS_DIR=/opt/hawser-stacks \
+  -e TOKEN=your-secret-token \
   -p 2376:2376 \
   ghcr.io/finsys/hawser:latest
 ```
 
-**Standard Mode with Token Authentication** (optional):
+**Standard Mode with Token Authentication:**
 
 ```bash
 docker run -d \
@@ -443,13 +454,14 @@ Hawser is configured via environment variables:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `DOCKHAND_SERVER_URL` | WebSocket URL for Edge mode | - |
-| `TOKEN` | Authentication token | - |
+| `TOKEN` | Authentication token. Required in Edge mode, and in Standard mode when binding a non-loopback address. | - |
 | `CA_CERT` | Path to CA certificate for Edge mode (self-signed Dockhand) | - |
 | `TLS_SKIP_VERIFY` | Skip TLS verification for Edge mode (insecure) | `false` |
 | `PORT` | HTTP server port (Standard mode) | `2376` |
 | `TLS_CERT` | Path to TLS certificate (Standard mode server cert) | - |
 | `TLS_KEY` | Path to TLS private key (Standard mode server key) | - |
 | `BIND_ADDRESS` | Address to bind to (use `127.0.0.1` to restrict to localhost) | `0.0.0.0` |
+| `ALLOW_INSECURE_NO_AUTH` | Permit Standard mode to bind a non-loopback address with no `TOKEN` (insecure; only for networks isolated by other means) | `false` |
 | `DOCKER_SOCKET` | Docker socket path | `/var/run/docker.sock` |
 | `STACKS_DIR` | Directory for compose stack files (requires Dockhand 1.0.5+). Use a host path bind mount with matching paths if stacks use relative file bind mounts. | `/data/stacks` |
 | `AGENT_ID` | Unique agent identifier | Auto-generated UUID |
@@ -622,8 +634,8 @@ cd hawser
 # Build
 go build -o hawser ./cmd/hawser
 
-# Run
-./hawser --port 2376
+# Run (loopback bind needs no token; use TOKEN=... to bind all interfaces)
+BIND_ADDRESS=127.0.0.1 ./hawser --port 2376
 ```
 
 ## Docker Build

@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/netip"
 	"os"
 	"strconv"
 	"strings"
@@ -18,10 +19,11 @@ type Config struct {
 	TLSSkipVerify     bool   // Skip TLS verification (insecure, for testing)
 
 	// Standard Mode (passive HTTP server)
-	Port        int    // Default: 2376
-	BindAddress string // Default: 0.0.0.0 (all interfaces)
-	TLSCert     string // Optional TLS certificate path
-	TLSKey      string // Optional TLS key path
+	Port                int    // Default: 2376
+	BindAddress         string // Default: 0.0.0.0 (all interfaces)
+	TLSCert             string // Optional TLS certificate path
+	TLSKey              string // Optional TLS key path
+	AllowInsecureNoAuth bool   // Allow standard mode to bind a non-loopback address without a token (insecure)
 
 	// Docker connection
 	DockerSocket string // Default: /var/run/docker.sock
@@ -59,10 +61,11 @@ func Load() (*Config, error) {
 		TLSSkipVerify:     getEnvBool("TLS_SKIP_VERIFY", false),
 
 		// Standard mode
-		Port:        getEnvInt("PORT", 2376),
-		BindAddress: getEnvString("BIND_ADDRESS", "0.0.0.0"),
-		TLSCert:     os.Getenv("TLS_CERT"),
-		TLSKey:      os.Getenv("TLS_KEY"),
+		Port:                getEnvInt("PORT", 2376),
+		BindAddress:         getEnvString("BIND_ADDRESS", "0.0.0.0"),
+		TLSCert:             os.Getenv("TLS_CERT"),
+		TLSKey:              os.Getenv("TLS_KEY"),
+		AllowInsecureNoAuth: getEnvBool("ALLOW_INSECURE_NO_AUTH", false),
 
 		// Docker
 		DockerSocket: getEnvString("DOCKER_SOCKET", detectDockerSocket()),
@@ -121,6 +124,17 @@ func (c *Config) validate() error {
 		if !strings.HasPrefix(c.DockhandServerURL, "ws://") && !strings.HasPrefix(c.DockhandServerURL, "wss://") {
 			return fmt.Errorf("DOCKHAND_SERVER_URL must start with ws:// or wss://")
 		}
+	} else {
+		// Standard mode: refuse to expose an unauthenticated Docker proxy on a
+		// reachable address. Without a token the HTTP server forwards every
+		// request straight to the Docker socket, so a non-loopback bind grants
+		// root-equivalent access to anyone who can reach the port.
+		if c.Token == "" && !isLoopbackBind(c.BindAddress) && !c.AllowInsecureNoAuth {
+			return fmt.Errorf(
+				"refusing to start: standard mode is bound to %q with no TOKEN set, which exposes an unauthenticated Docker API to the network. "+
+					"Set TOKEN, bind to a loopback address (BIND_ADDRESS=127.0.0.1), or explicitly set ALLOW_INSECURE_NO_AUTH=true to override",
+				c.BindAddress)
+		}
 	}
 
 	// Validate TLS configuration
@@ -143,13 +157,31 @@ func (c *Config) validate() error {
 	return nil
 }
 
+// isLoopbackBind reports whether a standard-mode bind address only accepts
+// connections from the local host. An empty address binds all interfaces and is
+// treated as non-loopback. Hostnames other than "localhost" cannot be resolved
+// safely here and are treated as non-loopback (fail closed).
+func isLoopbackBind(addr string) bool {
+	if addr == "" {
+		return false
+	}
+	if addr == "localhost" {
+		return true
+	}
+	ip, err := netip.ParseAddr(addr)
+	if err != nil {
+		return false
+	}
+	return ip.IsLoopback()
+}
+
 func detectDockerSocket() string {
 	// Check common socket paths
 	paths := []string{
-		"/var/run/docker.sock",           // Standard Linux
-		os.Getenv("HOME") + "/.docker/run/docker.sock", // Docker Desktop Mac
+		"/var/run/docker.sock",                           // Standard Linux
+		os.Getenv("HOME") + "/.docker/run/docker.sock",   // Docker Desktop Mac
 		os.Getenv("HOME") + "/.orbstack/run/docker.sock", // OrbStack
-		"/run/docker.sock",               // Alternative Linux
+		"/run/docker.sock",                               // Alternative Linux
 	}
 
 	for _, path := range paths {
