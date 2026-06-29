@@ -215,6 +215,10 @@ sudo tee /etc/hawser/config << 'EOF'
 PORT=2376
 DOCKER_SOCKET=/var/run/docker.sock
 EOF
+# The config can hold a TOKEN, so restrict it to root
+sudo chmod 600 /etc/hawser/config
+# If you run hawser as a non-root user, also chown it to that user (keep mode 600):
+#   sudo chown <user> /etc/hawser/config
 
 # 4. Create systemd service file
 sudo tee /etc/systemd/system/hawser.service << 'EOF'

@@ -107,6 +107,9 @@ TOKEN=change-me-before-starting
 EOF
 fi
 
+# The config can hold a TOKEN, so it must not be world-readable.
+sudo chmod 600 "$CONFIG_DIR/config"
+
 # Install systemd service if systemd is available
 if command -v systemctl &> /dev/null; then
     echo "Installing systemd service..."
