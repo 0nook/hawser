@@ -205,8 +205,10 @@ DOCKER_SOCKET=/var/run/docker.sock
 curl -fsSL https://github.com/Finsys/hawser/releases/latest/download/hawser_linux_amd64.tar.gz | tar xz
 sudo install -m 755 hawser /usr/local/bin/hawser
 
-# 2. Create config directory
-sudo mkdir -p /etc/hawser
+# 2. Create config and stacks directories
+#    /data/stacks must exist — the service unit's ReadWritePaths references it,
+#    and systemd fails to start the service if the path is missing.
+sudo mkdir -p /etc/hawser /data/stacks
 
 # 3. Create config file (edit with your settings)
 sudo tee /etc/hawser/config << 'EOF'
