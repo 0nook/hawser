@@ -24,3 +24,5 @@ coverage.html
 
 # Build
 *.out
+
+.env
